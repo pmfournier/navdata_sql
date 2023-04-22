@@ -1,0 +1,59 @@
+#!/bin/bash
+
+AVDB="${AVDB:-avdb.sqlite}"
+
+echo "Longest paved runways"
+echo "====================="
+echo ""
+sqlite3 -column -header "${AVDB}" "SELECT Airport.code,Airport.name AS 'apt name',runway_identifier AS id,runway_length AS 'length (ft)' FROM AirportRunway LEFT JOIN Airport ON AirportRunway.code = Airport.code WHERE Airport.longest_runway_surface_code='H' ORDER BY runway_length DESC LIMIT 20"
+echo ""
+echo ""
+
+
+echo "Airports with more than 8 runways"
+echo "================================="
+echo ""
+sqlite3 -column -header "${AVDB}" 'SELECT * FROM (SELECT Airport.code,Airport.name AS "apt name",count(*) AS "runway count" FROM AirportRunway LEFT JOIN Airport ON AirportRunway.code = Airport.code WHERE Airport.longest_runway_surface_code="H" GROUP BY Airport.code ORDER BY count(*) DESC) WHERE `runway count` > 8'
+echo ""
+echo ""
+
+echo "Runways with a localizer backcourse approach"
+echo "============================================"
+echo ""
+sqlite3 -column -header "${AVDB}" 'SELECT code,SUBSTRING(identifier,2) AS runway FROM AirportApproach WHERE identifier LIKE "B%"'
+echo ""
+echo ""
+
+echo "Counts"
+echo "======"
+echo ""
+sqlite3 -column "${AVDB}" 'SELECT "vor",(SELECT COUNT(*) FROM VHFNavaid ) UNION SELECT "ndb", (SELECT COUNT(*) FROM NDBNavaid) UNION SELECT "airports", (SELECT COUNT(*) FROM Airport) UNION SELECT "heliports", (SELECT COUNT(*) FROM Heliport) UNION SELECT "airway", (SELECT COUNT(*) FROM EnrouteAirway)'
+echo ""
+echo ""
+
+echo "Approaches with a DME ARC that are nearest to a specific airport (KFRG)"
+echo "======================================================================="
+echo "This requires spatialite to be installed"
+echo "***Ignore any error spatial_ref_sys already exists below***"
+sqlite3 -column "${AVDB}" -header 'SELECT load_extension("mod_spatialite") AS ""; SELECT InitSpatialMetaData("WGS84"); SELECT airport.code,airportapproachwaypoint.identifier,ROUND(GeodesicArcLength(makepoint(CAST((SELECT longitude FROM Airport WHERE code="KFRG") AS DECIMAL), CAST((SELECT latitude FROM Airport WHERE code="KFRG") AS DECIMAL), 4326), makepoint(CAST(longitude AS DECIMAL), CAST(latitude AS DECIMAL), 4326))/1000*0.539957, 1) AS dist FROM AirportApproachWaypoint LEFT JOIN airport ON airport.code=airportapproachwaypoint.code WHERE path_and_termination="AF" GROUP BY airport.code,airportapproachwaypoint.identifier ORDER BY dist LIMIT 30'
+echo ""
+echo ""
+
+# All the NDB approaches
+# N* is NDB, Q* is NDB-DME
+# SELECT code,identifier FROM AirportApproach WHERE identifier LIKE "N%" OR identifier like "Q%";
+
+echo "Approaches with most waypoints"
+echo "=============================="
+echo ""
+sqlite3 -column -header "${AVDB}" 'SELECT code AS apt,identifier AS apch,COUNT(*) AS waypnts FROM AirportApproachWaypoint WHERE transition_identifier="" GROUP BY code,identifier ORDER BY COUNT(*) DESC LIMIT 10'
+echo ""
+echo ""
+
+echo "Approaches with least waypoints"
+echo "==============================="
+echo ""
+sqlite3 -column -header "${AVDB}" 'SELECT code AS apt,identifier AS apch,COUNT(*) AS waypnts FROM AirportApproachWaypoint WHERE transition_identifier="" GROUP BY code,identifier ORDER BY COUNT(*) LIMIT 10'
+echo ""
+echo ""
+
